@@ -4,9 +4,7 @@ Import Library & Initialize Pygame
 Basic Configurations
 """
 #Import library 
-from numpy import inf
 import pygame
-from pyparsing import Char
 import random
 
 #Initialize Pygame
@@ -61,37 +59,83 @@ presets = [
     ],
 
     [
-        [10,13,13,13,13,13,11],
-        [15,4,4,4,4,4,14],
-        [15,4,4,4,4,4,14],
-        [15,4,4,4,4,4,14],
-        [15,4,4,4,4,4,14],
-        [15,4,4,4,4,4,14],
-        [9,12,12,12,12,12,8]
+        [10,13,13,13,13,13,13,13,13,11,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],
+        [15,4,4,4,4,4,4,4,4,14],
+        [15,4,4,4,4,4,4,4,4,14],
+        [15,4,4,4,4,4,4,4,4,14],
+        [15,4,4,4,4,4,4,4,4,14],
+        [15,4,4,4,4,4,4,4,4,9,13,13,11],
+        [15,4,4,4,4,4,4,4,4,4,4,4,14],
+        [15,4,4,4,4,4,4,4,4,4,4,4,9,13,13,13,13,11],
+        [15,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,14],
+        [15,4,4,4,4,4,4,4,4,4,4,4,4,4,4,10,12,8],
+        [15,4,4,4,4,4,4,4,4,4,4,4,4,4,4,14],
+        [9,12,12,12,12,12,12,12,12,12,12,12,12,12,12,8]
     ],
 ]
+moveable_coor = []
+for i in range(16):
+  moveable_coor.append([0]*22)
+
+def GenerateMonsters(image,gesture,speed,hp,number):
+  for i in range(number):
+    x_coor = random.randint(0,21)
+    y_coor = random.randint(0,15)
+    while moveable_coor[y_coor][x_coor] != 1:
+      x_coor = random.randint(0,21)
+      y_coor = random.randint(0,15)
+    monster = Monster(slime_img,0,5,x_coor*32 + mapsize[0],y_coor*32 + mapsize[1],hp)
+    monster_list.add(monster)
+    all_sprites_list.add(monster)
 
 def MapBuild(screen,room,x,y):
     for row in range(len(presets[room])):
         for column in range(len(presets[room][row])):
+          if presets[room][row][column] < len(tiles) and presets[room][row][column] > 0:
             screen.blit(tiles[presets[room][row][column]],[x + column*32,y + row*32])
-    return (x + 32,y + 32,(len(presets[room]) -2) * 32,(len(presets[room][0]) - 2) * 32)
+            if presets[room][row][column] in [0,1,2,3,4]:
+                  moveable_coor[row][column] = 1
+            elif presets[room][row][column] in [8,9,10,11,12,13,14,15]:
+                  moveable_coor[row][column] = 2
+    return (x,y,len(presets[room]) * 32,len(presets[room][0]) * 32)
+
+isDebugMove = False
+def DebugMove():
+  for row in range(len(moveable_coor)):
+    for column in range(len(moveable_coor[row])):
+      if moveable_coor[row][column] == 1 and row < size[1] and column<size[0]:
+        pygame.draw.rect(screen,green,(column*32 + mapsize[0],row*32 + mapsize[1],32,32),width=0)
+      elif moveable_coor[row][column] == 2 and row < size[1] and column<size[0]:
+        pygame.draw.rect(screen,red,(column*32 + mapsize[0],row*32 + mapsize[1],32,32),width=0)
+
+def CheckMove(x,y,dx,dy,isPlayer=False):
+  des_x = x + dx 
+  des_y = y + dy 
+  coor_des_x = (des_x - mapsize[0]) // 32
+  coor_des_y = (des_y - mapsize[1]) // 32
+  if isPlayer:
+    if moveable_coor[coor_des_y][coor_des_x] == 1:
+      return True
+    else:
+      return False
+  else:
+    if moveable_coor[coor_des_y][coor_des_x] == 1 or moveable_coor[coor_des_y][coor_des_x] == 2:
+      return True
+    else:
+      return False
 
 def BulletMech():
   enemy_hit_list = []
-  global score
   for bullet in bullet_list:
     enemy_hit_list = pygame.sprite.spritecollide(bullet,monster_list,False)
     # Remove the bullet if it flies up off the screen
-    if bullet.rect.y < mapsize[1] - 32 or bullet.rect.y > mapsize[1] + mapsize[3] + 32 or bullet.rect.x < mapsize[0] - 32 or bullet.rect.x > mapsize[0] + mapsize[2] + 32:
+    if not moveable_coor[(bullet.rect.y - mapsize[1]) // 32][(bullet.rect.x - mapsize[0]) // 32]:
       bullet_list.remove(bullet)
       all_sprites_list.remove(bullet)
   for enemy in enemy_hit_list:
     enemy.hp -= bullet.damage
     bullet_list.remove(bullet)
     all_sprites_list.remove(bullet)
-    score += 1
-    print(score)
 
 def ShowHUB(screen,x,y):
   global score
@@ -140,45 +184,39 @@ class PygameObject(pygame.sprite.Sprite):
     def reset_location(self,x,y):
         self.rect.x = x + mapsize[0]
         self.rect.y = x + mapsize[1]
-    def move_left(self):
-        if self.rect.x > mapsize[0] + self.speed:
-            self.rect.x -= self.speed
-        else:
-            self.rect.x = mapsize[0]
-        self.gesture = 2
-    def move_right(self):
-        if self.rect.x < mapsize[0] + mapsize[2] - self.rect.width - self.speed:
-            self.rect.x += self.speed
-        else:
-            self.rect.x = mapsize[0] + mapsize[2] - self.rect.width
-        self.gesture = 3
-    def move_front(self):
-        if self.rect.y < mapsize[1] + mapsize[3] - self.rect.height - self.speed:
-            self.rect.y += self.speed
-        else:
-            self.rect.y = mapsize[1] + mapsize[3] - self.rect.height
-        self.gesture = 0
-    def move_back(self):
-        if self.rect.y > mapsize[1] + self.speed:
-            self.rect.y -= self.speed
-        else:
-            self.rect.y = mapsize[1]
-        self.gesture = 1
+    def move_left(self,isPlayer = False):
+      if CheckMove(self.rect.x,self.rect.y,-self.speed,0,isPlayer):
+        self.rect.x -= self.speed
+      self.gesture = 2
+    def move_right(self,isPlayer = False):
+      if CheckMove(self.rect.x + self.rect.width,self.rect.y,self.speed,0,isPlayer):
+        self.rect.x += self.speed
+      self.gesture = 3
+    def move_front(self,isPlayer = False):
+      if CheckMove(self.rect.x,self.rect.y + self.rect.height,0,self.speed,isPlayer):
+        self.rect.y += self.speed
+      self.gesture = 0
+    def move_back(self,isPlayer = False):
+      if CheckMove(self.rect.x,self.rect.y,0,-self.speed,isPlayer):
+        self.rect.y -= self.speed
+      self.gesture = 1
     def update(self):
         """ Called each frame. """
         
 class Monster(PygameObject):
   def __init__(self, imageset, gesture, speed, x, y, hp) -> None:
         super().__init__(imageset, gesture, speed, x, y)
-        self.moveCoolDown = 1000
+        self.moveCoolDown = 500
         self.lastMoveTick = 0
         self.maxhp = hp
         self.hp = hp
   def update(self):
+    global score
     ShowHP(screen,self.rect.x,self.rect.y,self.hp,self.maxhp)
     if self.hp <= 0:
       all_sprites_list.remove(self)
       monster_list.remove(self)
+      score += 1
     if pygame.time.get_ticks() > self.lastMoveTick + self.moveCoolDown:
       self.lastMoveTick = pygame.time.get_ticks()
       movx = random.randint(-1,1)
@@ -205,7 +243,6 @@ class Character(PygameObject):
         self.lastSkillTick = 0
         self.maxhp = hp
         self.hp = hp
-    
     def update(self):
         ShowHP(screen,self.rect.x,self.rect.y,self.hp,self.maxhp)
         if self.hp <= 0:
@@ -214,13 +251,13 @@ class Character(PygameObject):
         key_list = pygame.key.get_pressed()
         if self.isMoveAllowed:
             if key_list[pygame.K_w]:
-                self.move_back()
+                self.move_back(True)
             if key_list[pygame.K_a]:
-                self.move_left()
+                self.move_left(True)
             if key_list[pygame.K_s]:
-                self.move_front()
+                self.move_front(True)
             if key_list[pygame.K_d]:
-                self.move_right()
+                self.move_right(True)
         if self.isShootAllowed:
           if key_list[pygame.K_SPACE]:
             if pygame.time.get_ticks() > self.lastBulletTick + self.bulletCoolDown:
@@ -239,6 +276,17 @@ class Character(PygameObject):
               bullet_list.add(bullet)
               all_sprites_list.add(bullet)
               self.lastSkillTick = pygame.time.get_ticks()
+        if key_list[pygame.K_SPACE] and pygame.key.get_mods() & pygame.KMOD_SHIFT and pygame.key.get_mods() & pygame.KMOD_CTRL:
+          for i in range(5):
+            bullet = Bullet(normal_bullet_img,5,self.gesture,100)
+            if self.gesture in [2,3]:
+              bullet.rect.x = self.rect.x
+              bullet.rect.y = self.rect.y - 25 + 10 * i
+            else:
+              bullet.rect.x = self.rect.x - 25 + 10 * i
+              bullet.rect.y = self.rect.y
+            bullet_list.add(bullet)
+            all_sprites_list.add(bullet)
 
 class Bullet(pygame.sprite.Sprite):
     """ This class represents the bullet . """
@@ -421,7 +469,7 @@ all_sprites_list = pygame.sprite.Group()
 bullet_list = pygame.sprite.Group()
 monster_list = pygame.sprite.Group()
 #define characters
-hero = Character(hero_img,0,10,20,20,5)
+hero = Character(hero_img,0,10,100,100,5)
 all_sprites_list.add(hero)
 #Score of the player
 score = 0
@@ -435,6 +483,13 @@ while not done and display_instructions:
       done = True 
     if event.type == pygame.KEYDOWN:
       key_list = pygame.key.get_pressed()
+      if key_list[pygame.K_m]:
+        if not isDebugMove:
+          isDebugMove = True
+          print("Move Debug Enabled")
+        else:
+          isDebugMove = False
+          print("Move Debug Disabled")
       if key_list[pygame.K_r]:
         if isAutoPageEnabled:
           print("auto next page disabled")
@@ -509,17 +564,15 @@ while not done and display_instructions:
       instruction_page += 1
     mapsize = MapBuild(screen,0,20,150)
     if tutor_index == 4:
-      hero.reset_location(10,10)
+      hero.reset_location(100,100)
     elif tutor_index == 5:
       hero.isMoveAllowed = True
     elif tutor_index == 6:
       hero.isShootAllowed = True
     elif tutor_index == 7:
       hero.isSkillAllowed = True
-    elif tutor_index == 8 and len(monster_list) < 2:
-      monster = Monster(slime_img,0,5,random.randint(0,mapsize[2]),random.randint(0,mapsize[3]),2)
-      monster_list.add(monster)
-      all_sprites_list.add(monster)
+    elif tutor_index == 8 and len(monster_list) == 0:
+      GenerateMonsters(slime_img,0,5,2,3)
     elif tutor_index == 9:
       for enemy in monster_list:
         monster_list.remove(enemy)
@@ -531,8 +584,11 @@ while not done and display_instructions:
     BulletMech()
     all_sprites_list.draw(screen)
     ShowHUB(screen,20,400)
+    if isDebugMove:
+      DebugMove()
   elif instruction_page == 5:
     Caption("Tutorial Finished, Now enjoy your game!",info,100,200)
+    isAutoPageEnabled = False
   else:
     display_instructions = False
     
@@ -549,13 +605,34 @@ while not done:
     if event.type == pygame.QUIT: 
       done = True 
       #If user clicks close, it will end the main loop. 
+    if event.type == pygame.KEYDOWN:
+      key_list = pygame.key.get_pressed()
+      if key_list[pygame.K_m]:
+        if not isDebugMove:
+          isDebugMove = True
+          print("Move Debug Enabled")
+        else:
+          isDebugMove = False
+          print("Move Debug Disabled")
 
   #Set the screen
   screen.fill(white)
 
   #Drawing code here 
-  MapBuild(screen,0,20,20)
+  ShowHUB(screen,10,450)
+  mapsize = MapBuild(screen,1,20,20)
+  all_sprites_list.update()
+  BulletMech()
+  all_sprites_list.draw(screen)
+  hero.isMoveAllowed = True
+  hero.isShootAllowed = True
+  hero.isSkillAllowed = True
   
+  if len(monster_list) == 0:
+    GenerateMonsters(slime_img,0,10,10,5)
+
+  if isDebugMove:
+    DebugMove()
   #Update the screen 
   pygame.display.flip()
 
