@@ -77,16 +77,27 @@ moveable_coor = []
 for i in range(16):
   moveable_coor.append([0]*22)
 
-def GenerateMonsters(image,gesture,speed,hp,number):
+def GenerateMonsters(image,gesture,speed,hp,worth,number):
+  for i in range(number):
+    x_coor = random.randint(0,21)
+    y_coor = random.randint(0,15)
+    while moveable_coor[y_coor][x_coor] != 1 or ((x_coor*32 - hero.rect.x) ** 2 + (y_coor*2 - hero.rect.y) ** 2) ** 0.5 < 64:
+      x_coor = random.randint(0,21)
+      y_coor = random.randint(0,15)
+    monster = Monster(image,gesture,speed,x_coor*32,y_coor*32,hp,worth)
+    monster_list.add(monster)
+    all_sprites_list.add(monster,layer=1)
+
+def GenerateCoins(number):
   for i in range(number):
     x_coor = random.randint(0,21)
     y_coor = random.randint(0,15)
     while moveable_coor[y_coor][x_coor] != 1:
       x_coor = random.randint(0,21)
       y_coor = random.randint(0,15)
-    monster = Monster(slime_img,0,5,x_coor*32 + mapsize[0],y_coor*32 + mapsize[1],hp)
-    monster_list.add(monster)
-    all_sprites_list.add(monster)
+    coin = Coins(x_coor * 32,y_coor * 32)
+    item_list.add(coin)
+    all_sprites_list.add(coin,layer=0)
 
 def MapBuild(screen,room,x,y):
     for row in range(len(presets[room])):
@@ -137,12 +148,40 @@ def BulletMech():
     bullet_list.remove(bullet)
     all_sprites_list.remove(bullet)
 
+def CollideMech():
+  enemy_attack_list = []
+  enemy_attack_list = pygame.sprite.spritecollide(hero,monster_list,False)
+  item_touch_list = []
+  item_touch_list = pygame.sprite.spritecollide(hero,item_list,False)
+  for enemy in enemy_attack_list:
+    if pygame.time.get_ticks() > hero.lastCollideTick + hero.collideProtection:
+      hero.hp -= 1
+      hero.lastCollideTick = pygame.time.get_ticks()
+    if enemy.rect.x > hero.rect.x:
+      hero.move_left()
+      enemy.move_right()
+    else:
+      hero.move_right()
+      enemy.move_left()
+    if enemy.rect.y > hero.rect.y:
+      hero.move_front()
+      enemy.move_back()
+    else:
+      hero.move_back()
+      enemy.move_front()
+  for item in item_touch_list:
+    item.touch()
 def ShowHUB(screen,x,y):
   global score
-  Caption("Score:{}".format(score),info,x,y)
+  global wave
+  Caption("Score: {} Current Wave: {}-{}".format(score,stage,wave),info,x,y)
+  Caption("Key: {} Chest Open: {}/3".format(hero.key,hero.chest),info,x,y + 30,24)
+
     
 def ShowHP(screen,x,y,hp,maxhp):
   ratio = hp/maxhp
+  if ratio < 0:
+    ratio = 0
   position_g = (x,y - 10,30 * ratio,5)
   position_r = (x + 30 * ratio,y - 10, 30 - 30 * ratio,5)
   pygame.draw.rect(screen, green, position_g, width=0 )
@@ -153,14 +192,16 @@ def Initialize():
   global all_sprites_list
   global monster_list
   global bullet_list
+  global item_list
   global mapsize
   global score
-  hero = Character(hero_img,0,10,20,20,5)
+  hero = Character(hero_img,0,5,20,20,10)
   mapsize = (0,0,0,0)
-  all_sprites_list = pygame.sprite.Group()
-  monster_list = pygame.sprite.Group()
-  bullet_list = pygame.sprite.Group()
-  all_sprites_list.add(hero)
+  all_sprites_list.empty()
+  monster_list.empty()
+  bullet_list.empty()
+  item_list.empty()
+  all_sprites_list.add(hero,layer=2)
   score = 0
   print("Initialize complete!")
 """
@@ -204,19 +245,23 @@ class PygameObject(pygame.sprite.Sprite):
         """ Called each frame. """
         
 class Monster(PygameObject):
-  def __init__(self, imageset, gesture, speed, x, y, hp) -> None:
+  def __init__(self, imageset, gesture, speed, x, y, hp,worth) -> None:
         super().__init__(imageset, gesture, speed, x, y)
         self.moveCoolDown = 500
         self.lastMoveTick = 0
         self.maxhp = hp
         self.hp = hp
+        self.worth = worth
   def update(self):
     global score
     ShowHP(screen,self.rect.x,self.rect.y,self.hp,self.maxhp)
     if self.hp <= 0:
       all_sprites_list.remove(self)
       monster_list.remove(self)
-      score += 1
+      for i in range(self.worth):
+        coin = Coins(self.rect.x + random.randint(-15,15),self.rect.y + random.randint(-15,15))
+        item_list.add(coin)
+        all_sprites_list.add(coin,layer=0)
     if pygame.time.get_ticks() > self.lastMoveTick + self.moveCoolDown:
       self.lastMoveTick = pygame.time.get_ticks()
       movx = random.randint(-1,1)
@@ -243,6 +288,10 @@ class Character(PygameObject):
         self.lastSkillTick = 0
         self.maxhp = hp
         self.hp = hp
+        self.key = 0
+        self.chest = 0
+        self.collideProtection = 1000
+        self.lastCollideTick = 0
     def update(self):
         ShowHP(screen,self.rect.x,self.rect.y,self.hp,self.maxhp)
         if self.hp <= 0:
@@ -265,7 +314,7 @@ class Character(PygameObject):
               bullet.rect.x = self.rect.x
               bullet.rect.y = self.rect.y
               bullet_list.add(bullet)
-              all_sprites_list.add(bullet)
+              all_sprites_list.add(bullet,layer=1)
               self.lastBulletTick = pygame.time.get_ticks()
         if self.isSkillAllowed:
           if key_list[pygame.K_q]:
@@ -274,19 +323,11 @@ class Character(PygameObject):
               bullet.rect.x = self.rect.x
               bullet.rect.y = self.rect.y
               bullet_list.add(bullet)
-              all_sprites_list.add(bullet)
+              all_sprites_list.add(bullet,layer=1)
               self.lastSkillTick = pygame.time.get_ticks()
         if key_list[pygame.K_SPACE] and pygame.key.get_mods() & pygame.KMOD_SHIFT and pygame.key.get_mods() & pygame.KMOD_CTRL:
-          for i in range(5):
-            bullet = Bullet(normal_bullet_img,5,self.gesture,100)
-            if self.gesture in [2,3]:
-              bullet.rect.x = self.rect.x
-              bullet.rect.y = self.rect.y - 25 + 10 * i
-            else:
-              bullet.rect.x = self.rect.x - 25 + 10 * i
-              bullet.rect.y = self.rect.y
-            bullet_list.add(bullet)
-            all_sprites_list.add(bullet)
+          for enemy in monster_list:
+            enemy.hp -= 0.2
 
 class Bullet(pygame.sprite.Sprite):
     """ This class represents the bullet . """
@@ -316,6 +357,77 @@ class Bullet(pygame.sprite.Sprite):
         if not self.simple:
           self.image = self.imageset[self.direction][pygame.time.get_ticks() // 50 % 3]
 
+class Item(PygameObject):
+  def __init__(self, imageset, x, y) -> None:
+    super().__init__(imageset, 0, 0, x, y)
+
+class Coins(Item):
+  def __init__(self, x, y) -> None:
+    super().__init__(coins_img, x, y)
+  def update(self):
+    self.image = self.imageset[self.gesture][pygame.time.get_ticks() // 150 % 4]
+    if self.rect.x >= size[0] or self.rect.y >= size[1] or self.rect.x < 0 or self.rect.y < 0:
+      self.rect.x = hero.rect.x + random.randint(-20,20)
+      self.rect.y = hero.rect.y + random.randint(-20,20)
+    if moveable_coor[self.rect.y//32][self.rect.x//32] != 1:
+      self.rect.x = hero.rect.x + random.randint(-20,20)
+      self.rect.y = hero.rect.y + random.randint(-20,20)
+  def touch(self):
+    global score
+    score += 1
+    all_sprites_list.remove(self)
+    item_list.remove(self)
+
+class Key(Item):
+  def __init__(self, x, y) -> None:
+    super().__init__(key_img, x, y)
+    self.image = self.imageset[0][0]
+  def touch(self):
+    hero.key += 1
+    all_sprites_list.remove(self)
+    item_list.remove(self)
+
+class Chest(Item):
+  def __init__(self,x,y,id) -> None:
+    super().__init__(chest_img,x,y)
+    self.image = chest_img[0][0]
+    self.locked = True
+    self.id = id
+    self.open = False
+  def touch(self):
+    if hero.key > 0 and self.locked == True:
+      hero.key -= 1
+      self.locked = False
+    if pygame.key.get_pressed()[pygame.K_e] and not self.locked and not self.open:
+      self.image = chest_img[0][1]
+      self.open = True
+      hero.chest += 1
+      for i in range(random.randint(5,10) * self.id):
+        coin = Coins(self.rect.x + random.randint(-15,15),self.rect.y + random.randint(-15,15))
+        item_list.add(coin)
+        all_sprites_list.add(coin,layer=0)
+          
+  
+class Door(Item):
+  def __init__(self,x,y) -> None:
+    super().__init__(door_img,x,y)
+    self.image = door_img[0][0]
+    self.locked = True
+    self.open = False
+  def touch(self):
+    if hero.chest >= 3:
+      self.locked = False
+      self.image = door_img[0][1]
+    if pygame.key.get_pressed()[pygame.K_e] and not self.locked and not self.open:
+      self.image = door_img[1][0]
+      pygame.time.delay(500)
+      self.image = door_img[1][1]
+      pygame.time.delay(500)
+      self.image = door_img[1][2]
+      pygame.time.delay(500)
+      self.image = door_img[1][3]
+      pygame.time.delay(500)
+      self.open = True
 """
 #3 Game Settings
 Game configurations & Windows Initialization
@@ -457,6 +569,19 @@ rocket_bullet_img = [
   ],
 ]
 
+coins_img = [[pygame.image.load("images/maps/coin_1.png"),
+pygame.image.load("images/maps/coin_2.png"),
+pygame.image.load("images/maps/coin_3.png"),
+pygame.image.load("images/maps/coin_4.png")]]
+
+key_img = [[pygame.image.load("images/maps/key.png")]]
+chest_img = [[pygame.image.load("images/maps/chest_closed.png"),pygame.image.load("images/maps/chest_open.png")]]
+door_img = [[pygame.image.load("images/maps/door_locked.png"),pygame.image.load("images/maps/door_unlocked.png")],
+[pygame.image.load("images/maps/door_1.png"),
+pygame.image.load("images/maps/door_2.png"),
+pygame.image.load("images/maps/door_3.png"),
+pygame.image.load("images/maps/door_4.png")]]
+
 """
 #5 Map and Character
 Initialize the map and character in the game
@@ -465,14 +590,21 @@ Initialize the map and character in the game
 #define the position of the map
 mapsize = (0,0,0,0)
 #Define the Sprite Groups
-all_sprites_list = pygame.sprite.Group()
+all_sprites_list = pygame.sprite.LayeredUpdates()
 bullet_list = pygame.sprite.Group()
 monster_list = pygame.sprite.Group()
+item_list = pygame.sprite.Group()
 #define characters
-hero = Character(hero_img,0,10,100,100,5)
-all_sprites_list.add(hero)
+hero = Character(hero_img,0,5,100,100,10)
+all_sprites_list.add(hero,layer=2)
 #Score of the player
 score = 0
+#Wave count of monsters
+wave = 0
+#Monster States of each wave
+monster_stat = [(5,3,1,3),(10,5,3,3),(15,5,5,5),(20,20,10,1)]
+#Current Game Stage
+stage = 0
 
 #initialize the game
 Initialize()
@@ -572,18 +704,16 @@ while not done and display_instructions:
     elif tutor_index == 7:
       hero.isSkillAllowed = True
     elif tutor_index == 8 and len(monster_list) == 0:
-      GenerateMonsters(slime_img,0,5,2,3)
+      GenerateMonsters(slime_img,0,5,3,0,1)
     elif tutor_index == 9:
       for enemy in monster_list:
         monster_list.remove(enemy)
         all_sprites_list.remove(enemy)
       hero.hp -= 0.02
-    elif tutor_index >= 10:
-      instruction_page += 1
     all_sprites_list.update()
     BulletMech()
+    CollideMech()
     all_sprites_list.draw(screen)
-    ShowHUB(screen,20,400)
     if isDebugMove:
       DebugMove()
   elif instruction_page == 5:
@@ -598,6 +728,16 @@ while not done and display_instructions:
   pygame.display.flip()
 
 Initialize()
+hero.reset_location(70,70)
+door = Door(550,275)
+item_list.add(door)
+all_sprites_list.add(door,layer=0)
+
+chests = [Chest(100,40,1),Chest(350,200,2),Chest(150,350,3)]
+for chest in chests:
+  item_list.add(chest)
+  all_sprites_list.add(chest,layer=0)
+
 #Main Program Loop 
 while not done:
   #Main event loop 
@@ -623,14 +763,21 @@ while not done:
   mapsize = MapBuild(screen,1,20,20)
   all_sprites_list.update()
   BulletMech()
+  CollideMech()
   all_sprites_list.draw(screen)
   hero.isMoveAllowed = True
   hero.isShootAllowed = True
   hero.isSkillAllowed = True
   
-  if len(monster_list) == 0:
-    GenerateMonsters(slime_img,0,10,10,5)
-
+  if len(monster_list) == 0 and wave < len(monster_stat):
+    GenerateMonsters(slime_img,0,monster_stat[wave][0],monster_stat[wave][1],monster_stat[wave][2],monster_stat[wave][3] * (stage + 1))
+    wave += 1
+  if wave == 4 and len(monster_list) == 0:
+    key = Key(200,200)
+    item_list.add(key)
+    all_sprites_list.add(key,layer=0)
+    stage += 1
+    wave = 0
   if isDebugMove:
     DebugMove()
   #Update the screen 
